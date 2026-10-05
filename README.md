@@ -1,35 +1,120 @@
-# PharmaShield: Neuro-Symbolic Verification for Pharmacological Hallucination Mitigation
+# PharmaShield: An Intelligent Neuro-Symbolic Framework for Automated Pharmacological Verification in Clinical Decision Support Systems
 
-Official implementation of the **PharmaShield** framework, a four-layer neuro-symbolic architecture designed to transform LLM-generated clinical recommendations into formally verifiable, interpretable, and auditable decisions. 
+[![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21478675.svg)](https://doi.org/10.5281/zenodo.21478675)
 
-This repository contains the core algorithmic pipeline, including the ontological subsumption mechanism and the hybrid Neuro $\rightarrow$ Symbolic $\rightarrow$ Neuro verification engine.
+PharmaShield is a four-layer neuro-symbolic framework that audits LLM-generated clinical text *post hoc*, transforming pharmacologically plausible but unsafe outputs into formally verifiable decisions. Unlike retrieval-based mitigations that ground the model *before* generation, PharmaShield verifies what the model *wrote*.
 
-## 📖 Overview
+## Core Architecture
 
-PharmaShield addresses the critical issue of LLM hallucinations in clinical decision support by decoupling semantic extraction from formal constraint checking. The architecture operates through four integrated layers:
+| Layer | Function | Paradigm |
+|-------|----------|----------|
+| **Layer 1** | Neural claim extraction + multilingual abbreviation resolution | Neural |
+| **Layer 2** | Ontology-grounding (ATC, MONDO, UMLS, HPO) | Neural + rules |
+| **Layer 3** | Deterministic constraint checking with ontological subsumption | Symbolic |
+| **Layer 4** | Neural fallback on symbolically uncertain cases | Neural |
 
-1. **Neural Claim Extraction:** Parses atomic clinical entities from unstructured text.
-2. **Ontology-Grounding:** Normalizes entities to standardized biomedical identifiers (ATC, MONDO, UMLS).
-3. **Symbolic Constraint Checking:** Validates recommendations against pharmacological knowledge graphs using deterministic rules and **ontological subsumption** ($P \sqsubseteq D \Rightarrow \text{Contra}(P, M)$).
-4. **Neural Fallback & Audit:** Resolves uncertainty via a probabilistic MLP and generates an interpretable clinical audit trail.
+The central contribution is **ontological subsumption**: when no direct contraindication match exists, Layer 3 traverses MONDO/HPO hierarchies so that a contraindication documented for a parent disease class logically applies to every subclass — genuine hierarchical inference, not retrieval of pre-encoded answers.
 
-## 📁 Project Structure
+## Key Results (MedExpQA pharmacological subset)
 
-```text
-pharmashield/
-├── main.py                      # Main execution pipeline
-├── requirements.txt             # Python dependencies
-├── pharmashield/
-│   ├── __init__.py
-│   ├── models.py                # Pydantic data models
-│   ├── config.py                # Configuration & thresholds
-│   ├── layers/
-│   │   ├── __init__.py
-│   │   ├── neural_extraction.py # Layer 1: LLM-based parsing
-│   │   ├── entity_linking.py    # Layer 2: Ontology mapping
-│   │   ├── symbolic_engine.py   # Layer 3: Deterministic verification & Subsumption
-│   │   ├── neural_fallback.py   # Layer 4: Probabilistic resolution
-│   │   └── audit_trail.py       # Layer 4: Report generation
-│   ── knowledge_graph/
-│       ├── __init__.py
-│       └── kg_loader.py         # Knowledge graph & ontology utilities
+- **F1-score:** 0.90 (95% CI 0.89–0.91)
+- **Critical False Negative Rate:** 8.1% vs 24.8% for the strongest retrieval baseline
+- **Hold-out recovery:** 73% of deliberately removed contraindications recovered via traversal
+- **Computational overhead:** 14.5% above unmitigated LLM inference
+- **Statistical significance:** McNemar p < 0.001
+
+## Installation
+
+```bash
+git clone https://github.com/<your-username>/PharmaShield.git
+cd PharmaShield
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+Requires Python ≥ 3.10.
+
+## Quick Start
+
+```python
+from pharmashield.pipeline import PharmaShieldPipeline
+
+pipeline = PharmaShieldPipeline.from_pretrained("configs/default.yaml")
+
+clinical_text = "Patient with CKD stage 4 prescribed ibuprofen for pain."
+result = pipeline.verify(clinical_text)
+
+for claim in result.claims:
+    print(claim.text)          # atomic claim
+    print(claim.verdict)       # Valid / Invalid / Uncertain
+    print(claim.audit_trail)   # human-readable explanation
+```
+
+## Reproducing the Results
+
+```bash
+# Download the MedExpQA pharmacological subset
+python scripts/download_medexpqa.py
+
+# Run the full evaluation (all baselines + PharmaShield)
+python evaluation/run_evaluation.py --benchmark medexpqa --output results/
+
+# Run the hold-out ontological experiment
+python evaluation/holdout_experiment.py --n-removed 100 --max-depth 3
+
+# Run the ablation study
+python evaluation/ablation_study.py --output results/ablation.json
+
+# Reproduce Tables 2-6 and Figures 2-6 from the paper
+python scripts/reproduce_tables.py
+```
+
+## Evaluation Benchmarks
+
+- **MedExpQA pharmacological subset** — 500 expert-validated multilingual questions, 1,487 claims generated by GPT-4o, Llama-3-70B and Mistral-7B.
+- **PharmaHalluBench** — 800 programmatically generated scenarios, 1,247 assertions, used for the controlled hold-out experiment.
+
+## Project Structure
+
+```
+pharmashield/      Core framework (4 layers + audit trail)
+evaluation/        Metrics, baselines, and experiment scripts
+data/              Dataset subsets and knowledge-base loaders
+figures/           Figure generation scripts
+scripts/           Data download and table reproduction
+tests/             Unit tests
+```
+
+## Running Tests
+
+```bash
+pytest tests/ -v
+```
+
+## Citation
+
+If you use PharmaShield in your research, please cite:
+
+```bibtex
+@article{kermani2026pharmashield,
+  title   = {PharmaShield: An Intelligent Neuro-Symbolic Framework for Automated Pharmacological Verification in Clinical Decision Support Systems},
+  author  = {Kermani, Meriem},
+  journal = {Intelligent Automation \& Soft Computing},
+  year    = {2026},
+  publisher = {Tech Science Press},
+  doi     = {10.32604/iasc.2026.xxxxx}
+}
+```
+
+## License
+
+This project is licensed under the Creative Commons Attribution 4.0 International License. The datasets used (MedExpQA, DDInter 2.0, DrugCentral, MONDO, AGS Beers Criteria, TGA categories) retain their respective original licenses.
+
+## Contact
+
+Meriem Kermani — meriem.kermani@univ-constantine2.dz
+Distributed Computing Laboratory (LIRE), University of Constantine 2 - Abdelhamid Mehri, Algeria
