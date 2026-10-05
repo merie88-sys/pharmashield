@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Environments
+venv/
+.venv/
+env/
+
+# Data & models (tracked via Zenodo, not GitHub)
+data/raw/
+*.pkl
+*.pt
+*.bin
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Results
+results/
+*.log
