@@ -4,19 +4,6 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21478675.svg)](https://doi.org/10.5281/zenodo.21478675)
 
-PharmaShield is a four-layer neuro-symbolic framework that audits LLM-generated clinical text *post hoc*, transforming pharmacologically plausible but unsafe outputs into formally verifiable decisions. Unlike retrieval-based mitigations that ground the model *before* generation, PharmaShield verifies what the model *wrote*.
-
-## Core Architecture
-
-| Layer | Function | Paradigm |
-|-------|----------|----------|
-| **Layer 1** | Neural claim extraction + multilingual abbreviation resolution | Neural |
-| **Layer 2** | Ontology-grounding (ATC, MONDO, UMLS, HPO) | Neural + rules |
-| **Layer 3** | Deterministic constraint checking with ontological subsumption | Symbolic |
-| **Layer 4** | Neural fallback on symbolically uncertain cases | Neural |
-
-The central contribution is **ontological subsumption**: when no direct contraindication match exists, Layer 3 traverses MONDO/HPO hierarchies so that a contraindication documented for a parent disease class logically applies to every subclass — genuine hierarchical inference, not retrieval of pre-encoded answers.
-
 ## Key Results (MedExpQA pharmacological subset)
 
 - **F1-score:** 0.90 (95% CI 0.89–0.91)
@@ -103,10 +90,8 @@ If you use PharmaShield in your research, please cite:
 @article{kermani2026pharmashield,
   title   = {PharmaShield: An Intelligent Neuro-Symbolic Framework for Automated Pharmacological Verification in Clinical Decision Support Systems},
   author  = {Kermani, Meriem},
-  journal = {Intelligent Automation \& Soft Computing},
-  year    = {2026},
-  publisher = {Tech Science Press},
-  doi     = {10.32604/iasc.2026.xxxxx}
+   year    = {2026},
+ 
 }
 ```
 
