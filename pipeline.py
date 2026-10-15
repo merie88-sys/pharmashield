@@ -1,91 +1,70 @@
-"""End-to-end PharmaShield verification pipeline."""
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import List
-
-from pharmashield.config import PharmaShieldConfig, DEFAULT_CONFIG
-from pharmashield.layer1_extraction.claim_extractor import ClaimExtractor
-from pharmashield.layer2_grounding.entity_linker import EntityLinker
-from pharmashield.layer3_symbolic.symbolic_engine import SymbolicEngine
-from pharmashield.layer4_fallback.neural_fallback import NeuralFallback
-from pharmashield.audit.audit_trail import AuditTrailGenerator
-
-
-@dataclass
-class VerifiedClaim:
-    """A single verified atomic claim with its verdict and audit trail."""
-    text: str
-    claim_type: str
-    verdict: str            # "Valid" | "Invalid" | "Uncertain"
-    confidence: float
-    audit_trail: str
-
-
-@dataclass
-class VerificationResult:
-    """Aggregated output of the pipeline."""
-    claims: List[VerifiedClaim]
-    n_invalid: int
-    n_valid: int
-    n_uncertain: int
-
+"""Main PharmaShield pipeline orchestrating all four layers."""
+from typing import List, Dict
+import time
+from pharmashield.layer1_claim_extraction import ClaimExtractor
+from pharmashield.layer2_entity_linking import EntityLinker
+from pharmashield.layer3_symbolic_verification import SymbolicVerifier, Verdict
+from pharmashield.layer4_neural_fallback import NeuralFallback
+from pharmashield.utils.metrics import compute_metrics
 
 class PharmaShieldPipeline:
-    """Orchestrates the four verification layers."""
+    """End-to-end neuro-symbolic verification pipeline."""
 
-    def __init__(self, config: PharmaShieldConfig = DEFAULT_CONFIG):
+    def __init__(self, config, knowledge_base, embedding_model):
         self.config = config
-        self.extractor = ClaimExtractor(config)
-        self.linker = EntityLinker(config)
-        self.symbolic_engine = SymbolicEngine(config)
-        self.fallback = NeuralFallback(config)
-        self.audit_generator = AuditTrailGenerator(config)
+        self.layer1 = ClaimExtractor(config)
+        self.layer2 = EntityLinker(config)
+        self.layer3 = SymbolicVerifier(config, knowledge_base)
+        self.layer4 = NeuralFallback(config, embedding_model)
+        self.latency_log = {"layer1": [], "layer2": [], "layer3": [], "layer4": []}
 
-    @classmethod
-    def from_pretrained(cls, config_path: str) -> "PharmaShieldPipeline":
-        import yaml
-        with open(config_path, "r") as f:
-            data = yaml.safe_load(f)
-        return cls(PharmaShieldConfig(**data))
+    def verify_text(self, text: str, language: str = "en") -> Dict:
+        """Full pipeline: text -> verdict + audit trail."""
+        t0 = time.perf_counter()
 
-    def verify(self, clinical_text: str) -> VerificationResult:
-        """Run the full Neuro -> Symbolic -> Neural verification pipeline."""
-        # Layer 1: neural claim extraction
-        raw_claims = self.extractor.extract(clinical_text)
+        # Layer 1
+        claims = self.layer1(text, language)
+        self.latency_log["layer1"].append(time.perf_counter() - t0)
 
-        # Layer 2: ontology grounding
-        grounded_claims = self.linker.link_all(raw_claims)
+        results = []
+        for claim in claims:
+            # Layer 2
+            t1 = time.perf_counter()
+            grounded = self.layer2(claim)
+            self.latency_log["layer2"].append(time.perf_counter() - t1)
 
-        verified: List[VerifiedClaim] = []
-        for claim in grounded_claims:
-            # Layer 3: deterministic symbolic verification
-            symbolic = self.symbolic_engine.check(claim)
+            # Layer 3
+            t2 = time.perf_counter()
+            verdict = self.layer3(grounded)
+            self.latency_log["layer3"].append(time.perf_counter() - t2)
 
-            if symbolic.verdict != "Uncertain":
-                verdict, confidence = symbolic.verdict, symbolic.confidence
-            else:
-                # Layer 4: neural fallback only when symbolic is silent
-                prob = self.fallback.predict(claim)
-                if prob > self.config.theta_safe:
-                    verdict, confidence = "Invalid", prob
-                else:
-                    verdict, confidence = "Valid", 1.0 - prob
+            # Layer 4 (conditional)
+            if self.layer4.should_trigger(verdict):
+                t3 = time.perf_counter()
+                verdict = self.layer4.predict(grounded)
+                self.latency_log["layer4"].append(time.perf_counter() - t3)
 
-            audit = self.audit_generator.generate(claim, verdict, symbolic)
-            verified.append(
-                VerifiedClaim(
-                    text=claim.text,
-                    claim_type=claim.type,
-                    verdict=verdict,
-                    confidence=confidence,
-                    audit_trail=audit,
-                )
-            )
+            results.append(verdict)
 
-        return VerificationResult(
-            claims=verified,
-            n_invalid=sum(c.verdict == "Invalid" for c in verified),
-            n_valid=sum(c.verdict == "Valid" for c in verified),
-            n_uncertain=sum(c.verdict == "Uncertain" for c in verified),
-        )
+        final = self._aggregate(results)
+        return final
+
+    def _aggregate(self, results: List[Dict]) -> Dict:
+        invalid_count = sum(1 for r in results if r["verdict"] == Verdict.INVALID.value)
+        return {
+            "final_verdict": Verdict.INVALID.value if invalid_count > 0 else Verdict.VALID.value,
+            "n_claims": len(results),
+            "n_invalid": invalid_count,
+            "claims": results,
+            "audit_trail": [r.get("audit", []) for r in results],
+        }
+
+    def evaluate(self, dataset: List[Dict]) -> Dict:
+        """Evaluate pipeline on a labeled dataset."""
+        predictions = []
+        ground_truth = []
+        for sample in dataset:
+            pred = self.verify_text(sample["text"], sample.get("language", "en"))
+            predictions.append(1 if pred["final_verdict"] == Verdict.INVALID.value else 0)
+            ground_truth.append(1 if sample["label"] == "invalid" else 0)
+        return compute_metrics(ground_truth, predictions)
