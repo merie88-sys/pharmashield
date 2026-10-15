@@ -1,36 +1,36 @@
-"""Global configuration for the PharmaShield pipeline."""
+"""Global configuration for PharmaShield."""
 from dataclasses import dataclass, field
-from typing import Dict
-
+from typing import Dict, List, Optional
 
 @dataclass
-class PharmaShieldConfig:
-    """Central configuration object for all four layers."""
+class OntologyConfig:
+    atc_path: str = "data/ontologies/atc.owl"
+    mondo_path: str = "data/ontologies/mondo.owl"
+    umls_path: str = "data/ontologies/umls"
+    hpo_path: str = "data/ontologies/hp.owl"
+    embedding_dim: int = 384
+    similarity_threshold: float = 0.85
 
-    # Layer 1: Neural extraction
-    extraction_model: str = "gpt-4o"
-    temperature: float = 0.7
-    max_claims: int = 64
-
-    # Layer 2: Ontology grounding
-    ontologies: list = field(
-        default_factory=lambda: ["ATC", "MONDO", "UMLS", "HPO"]
-    )
-    linking_threshold: float = 0.75
-
-    # Layer 3: Symbolic verification
-    knowledge_bases: list = field(
-        default_factory=lambda: ["DDInter", "DrugCentral", "Beers", "TGA"]
-    )
-    subsumption_max_depth: int = 3
-    severity_threshold: str = "major"
-
-    # Layer 4: Neural fallback
-    fallback_model: str = "mlp_ddi"
+@dataclass
+class SymbolicConfig:
     theta_safe: float = 0.7
+    max_subsumption_depth: int = 10
+    enable_subsumption: bool = True
+    knowledge_sources: List[str] = field(default_factory=lambda: [
+        "ddinter", "drugcentral", "mondo", "beers2023", "tga"
+    ])
 
-    # Audit
-    audit_enabled: bool = True
+@dataclass
+class NeuralConfig:
+    fallback_model: str = "distilbert-base-multilingual-cased"
+    mlp_hidden_dim: int = 256
+    mlp_dropout: float = 0.2
+    confidence_threshold: float = 0.7
 
-
-DEFAULT_CONFIG = PharmaShieldConfig()
+@dataclass
+class PipelineConfig:
+    ontology: OntologyConfig = field(default_factory=OntologyConfig)
+    symbolic: SymbolicConfig = field(default_factory=SymbolicConfig)
+    neural: NeuralConfig = field(default_factory=NeuralConfig)
+    languages: List[str] = field(default_factory=lambda: ["en", "fr", "es", "it", "ru"])
+    abbreviation_lexicon_size: int = 3500
